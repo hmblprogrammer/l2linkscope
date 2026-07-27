@@ -49,9 +49,11 @@ Future publication should use crates.io Trusted Publishing or another
 short-lived credential mechanism.
 
 The initial security workflow installs `cargo-audit` version `0.22.2` and
-`cargo-deny` version `0.20.2` with `cargo install --locked --version`. This
-keeps scheduled checks explicit without committing third-party binaries or
-adding long-lived credentials.
+`cargo-deny` version `0.20.2` with `cargo +stable install --locked --version`.
+The project MSRV remains Rust `1.85`, while the security tools run under the
+current stable toolchain so they can understand the current RustSec advisory
+database and policy formats. This keeps scheduled checks explicit without
+committing third-party binaries or adding long-lived credentials.
 
 ## Tags And Releases
 

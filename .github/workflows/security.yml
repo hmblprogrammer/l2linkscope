@@ -23,14 +23,17 @@ jobs:
       - name: Install declared Rust toolchain
         run: rustup show
 
+      - name: Install stable Rust for security tools
+        run: rustup toolchain install stable --profile minimal
+
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked --version 0.22.2
+        run: cargo +stable install cargo-audit --locked --version 0.22.2
 
       - name: Install cargo-deny
-        run: cargo install cargo-deny --locked --version 0.20.2
+        run: cargo +stable install cargo-deny --locked --version 0.20.2
 
       - name: Audit Rust dependencies
-        run: cargo audit --deny warnings
+        run: cargo +stable audit --deny warnings
 
       - name: Check dependency policy
-        run: cargo deny check advisories licenses bans sources
+        run: cargo +stable deny check advisories licenses bans sources
