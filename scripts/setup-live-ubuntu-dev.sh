@@ -73,6 +73,13 @@ else
   git clone --branch "$REPO_BRANCH" "$REPO_URL" "$WORKDIR"
 fi
 
+log "Installing repository Rust toolchain"
+(
+  cd "$WORKDIR"
+  rustup show
+  rustup component add rustfmt clippy
+)
+
 log "Verifying development tools"
 require_command git
 require_command ip
@@ -81,8 +88,11 @@ require_command cargo
 require_command tcpdump
 require_command tshark
 
-rustc --version
-cargo --version
+(
+  cd "$WORKDIR"
+  rustc --version
+  cargo --version
+)
 ip -Version
 
 log "Checking Linux network namespace support"

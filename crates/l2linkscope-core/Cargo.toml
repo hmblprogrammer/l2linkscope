@@ -1,0 +1,13 @@
+[package]
+name = "l2linkscope-core"
+description = "Portable domain foundation for L2LinkScope."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+readme = "README.md"
+
+[lints]
+workspace = true

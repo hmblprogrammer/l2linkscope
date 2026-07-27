@@ -1,0 +1,40 @@
+name: Release Check
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-readiness:
+    name: release-readiness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # actions/checkout v4.2.2
+
+      - name: Install declared Rust toolchain
+        run: rustup show
+
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
+
+      - name: Run workspace checks
+        run: scripts/check.sh
+
+      - name: Verify packages remain unpublished
+        run: |
+          for manifest in crates/*/Cargo.toml; do
+            grep -q '^publish = false$' "$manifest"
+          done
+
+      - name: Verify package contents without publishing
+        run: cargo package --workspace

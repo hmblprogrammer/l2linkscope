@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workspace:
+    name: workspace
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # actions/checkout v4.2.2
+
+      - name: Install declared Rust toolchain
+        run: rustup show
+
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
+
+      - name: Run workspace checks
+        run: scripts/check.sh
