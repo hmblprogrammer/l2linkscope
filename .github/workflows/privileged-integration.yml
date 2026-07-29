@@ -1,0 +1,40 @@
+name: Privileged Linux Integration
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  network-namespace-dhcp:
+    name: network-namespace-dhcp
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # actions/checkout v4.2.2
+
+      - name: Install declared Rust toolchain
+        run: rustup show
+
+      - name: Verify namespace prerequisites
+        run: |
+          command -v ip
+          command -v python3
+          command -v setpriv
+          sudo ip netns add l2linkscope-ci-check
+          sudo ip netns delete l2linkscope-ci-check
+
+      - name: Build integration binary without elevated privileges
+        run: cargo build --locked -p l2linkscope
+
+      - name: Run isolated DHCP integration suite
+        run: sudo --preserve-env=PATH scripts/test-privileged.sh
