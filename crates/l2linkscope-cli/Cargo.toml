@@ -9,6 +9,14 @@ repository.workspace = true
 publish = false
 readme = "README.md"
 
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+l2linkscope-core = { version = "0.1.0", path = "../l2linkscope-core" }
+l2linkscope-linux = { version = "0.1.0", path = "../l2linkscope-linux" }
+l2linkscope-protocols = { version = "0.1.0", path = "../l2linkscope-protocols" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
 [[bin]]
 name = "l2linkscope"
 path = "src/main.rs"

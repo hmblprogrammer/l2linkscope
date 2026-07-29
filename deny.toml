@@ -6,6 +6,8 @@ yanked = "deny"
 version = 2
 allow = [
   "MIT",
+  # unicode-ident's generated Unicode data is under this SPDX license.
+  "Unicode-3.0",
 ]
 confidence-threshold = 0.8
 

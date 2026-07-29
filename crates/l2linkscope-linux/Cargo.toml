@@ -9,5 +9,14 @@ repository.workspace = true
 publish = false
 readme = "README.md"
 
+[dependencies]
+l2linkscope-core = { version = "0.1.0", path = "../l2linkscope-core" }
+l2linkscope-protocols = { version = "0.1.0", path = "../l2linkscope-protocols" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+getrandom = "0.3"
+if-addrs = "0.13"
+socket2 = { version = "0.5", features = ["all"] }
+
 [lints]
 workspace = true
