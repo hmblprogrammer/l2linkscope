@@ -1,6 +1,7 @@
 name: Security
 
 on:
+  pull_request:
   workflow_dispatch:
   schedule:
     - cron: "24 11 * * 2"
@@ -13,8 +14,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  committed-secrets:
+    name: committed-secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # actions/checkout v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Scan committed history for secrets
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # gitleaks-action v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   dependency-security:
     name: dependency-security
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository

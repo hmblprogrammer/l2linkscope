@@ -43,6 +43,8 @@ sudo apt-get install -y --no-install-recommends \
   llvm \
   net-tools \
   pkg-config \
+  python3 \
+  util-linux \
   tcpdump \
   tshark \
   wireshark-common

@@ -1,44 +1,64 @@
 # Evidence Model
 
-Future L2LinkScope findings must distinguish how strongly a claim is supported.
-The evidence model is conceptual in this scaffold; no Rust evidence types are
-implemented yet.
+L2LinkScope records both a value and how that value became known. Confidence or
+convenience must never promote an inference into an observed fact.
 
-## Evidence Classes
+## Evidence classes
 
-Directly observed evidence comes from traffic or platform state that
-L2LinkScope actually observed. For example, seeing a source MAC address in a
-captured Ethernet frame is direct evidence that the frame was present.
+`directly_observed`
+: A fact taken directly from a received frame or local kernel state. Examples
+  include the selected interface index, its current MTU, or the fact that a
+  matching DHCP packet arrived during the collection window.
 
-Advertised-by-peer evidence comes from configuration or facts a peer claims.
-For example, DHCP-provided subnet information is advertised by a peer. It is not
-proof that the local host accepted that configuration or that the peer is
-authoritative.
+`advertised_by_peer`
+: A claim made by another protocol participant. The proposed address, subnet
+  mask, routers, DNS servers, lease timers, MTU, domain information, and routes
+  in a DHCP Offer are all peer advertisements. They are not proof of authority,
+  reachability, acceptance, or local configuration.
 
-Derived evidence is computed from directly observed or advertised inputs. For
-example, a network prefix might be derived from an advertised address and subnet
-mask, while preserving the fact that the subnet mask itself was advertised.
+`derived`
+: A value computed from other evidence. For example, a displayed network
+  prefix can be derived from an offered address and advertised subnet mask. A
+  derived value must retain links to or context about its inputs where the
+  public model provides them.
 
-Speculative evidence is a cautious hypothesis that may help a user investigate
-but must not be presented as fact.
+`speculative`
+: A cautious hypothesis that may guide investigation but is not established by
+  the available evidence. Version 0.1.0 does not invent speculative DHCP facts
+  merely because an option is absent.
 
-## Examples
+## DHCPv4 example
 
-ARP addresses do not prove a CIDR. They show that a protocol participant used
-an address in observed traffic.
+Receiving a matching packet is directly observed. The packet's DHCP options
+are still claims by its sender, so normalized configuration from an Offer is
+classified `advertised_by_peer`. If the CLI calculates `192.0.2.0/24` from
+offered address `192.0.2.117` and subnet mask `255.255.255.0`, that network is
+derived; it is not a configured route or proof that the subnet is usable.
 
-An observed VLAN tag does not prove that a VLAN is available for configuration.
-It only proves that tagged traffic was observed.
+An offer does not mean that:
 
-Missing tagged traffic does not prove that no VLAN exists. It only means no
-matching traffic was observed in the collection window.
+* L2LinkScope accepted a lease;
+* the sender is the legitimate DHCP server;
+* the advertised router or DNS server is reachable or trustworthy;
+* the host installed any advertised value; or
+* no other DHCP server exists.
 
-DHCP-provided routers, DNS servers, lease duration, and subnet masks are
-advertised by a peer. L2LinkScope must report them as offers or claims, not as
-local configuration.
+## Missing evidence
 
-## Product Boundary
+No Offer during a bounded probe means only that no matching, valid Offer was
+observed during that window. It does not prove that the network has no DHCP
+server. Malformed or unrelated replies are not silently converted into facts;
+they may produce structured warnings or an exit category described in
+[Exit Codes](ExitCodes.md).
 
-L2LinkScope observes and probes. It does not configure. Evidence classes should
-reinforce that boundary by avoiding language that implies configuration was
-accepted, trusted, or applied.
+## Serialization
+
+Evidence classes use explicit stable strings in JSON rather than Rust debug
+representations. The top-level envelope declares a schema version. See
+[JSON Output](JsonOutput.md). The schema remains experimental during 0.x.
+
+## Product boundary
+
+Evidence classification reinforces the core rule: **L2LinkScope observes and
+probes. It does not configure.** The model must never describe a DHCP offer as
+trusted, accepted, leased, installed, or locally configured.

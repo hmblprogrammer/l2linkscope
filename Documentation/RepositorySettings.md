@@ -1,8 +1,8 @@
 # Repository Settings
 
 These settings cannot be reliably committed as repository files. Maintainers
-should configure them in GitHub. This scaffold does not attempt to change
-repository settings.
+should configure them in GitHub. Repository files document the intended policy
+but do not attempt to change repository settings.
 
 ## Branches
 
@@ -14,8 +14,11 @@ pull requests before merging and require status checks to pass.
 Recommended required checks:
 
 * `CI / workspace`
-* `Release Check / release-readiness` when preparing a release
-* security workflow results before release decisions
+* `Privileged Linux Integration / network-namespace-dhcp`
+* `Security / committed-secrets`
+* `Release Check / release-readiness` and
+  `Release Check / privileged-integration` when preparing a release
+* scheduled dependency-security results before release decisions
 
 Disallow force pushes to the default branch. Disallow deletion of the default
 branch.
@@ -48,8 +51,9 @@ Do not store long-lived crates.io publishing tokens as repository secrets.
 Future publication should use crates.io Trusted Publishing or another
 short-lived credential mechanism.
 
-The initial security workflow installs `cargo-audit` version `0.22.2` and
-`cargo-deny` version `0.20.2` with `cargo +stable install --locked --version`.
+The security workflow installs `cargo-audit` version `0.22.2` and `cargo-deny`
+version `0.20.2` with `cargo +stable install --locked --version` and runs a
+pinned Gitleaks action against committed history.
 The project MSRV remains Rust `1.85`, while the security tools run under the
 current stable toolchain so they can understand the current RustSec advisory
 database and policy formats. This keeps scheduled checks explicit without

@@ -1,86 +1,135 @@
 # Architecture
 
-L2LinkScope is organized as a four-package Rust workspace. The scaffold defines
-the package boundaries without implementing discovery functionality.
+L2LinkScope 0.1.0 is a four-package Cargo workspace. Each package owns one
+layer of the discovery pipeline:
 
-## Workspace Packages
+```text
+DHCP bytes
+    | encode / parse
+    v
+l2linkscope-protocols
+    | normalized protocol values
+    v
+l2linkscope-linux --------> l2linkscope-core
+    | safe Linux inventory    domain models, evidence, errors
+    | and bounded transport
+    v
+l2linkscope CLI
+    human-readable or JSON presentation
+```
 
-`l2linkscope-core` is the portable domain layer. It will eventually contain
-observation, evidence, interface, session, snapshot, warning, and error models.
-It must not depend on Linux-only APIs, raw sockets, packet acquisition, or CLI
-formatting.
+## Package responsibilities
 
-`l2linkscope-protocols` owns protocol bytes. It will eventually encode and parse
-protocol messages and maintain protocol fixtures. It must not transmit packets,
-receive packets, or open sockets.
+### `l2linkscope-core`
 
-`l2linkscope-linux` is the Linux-specific acquisition layer. It will eventually
-contain interface inventory, privilege handling, packet acquisition, and bounded
-active transports. Linux-specific details belong here rather than in portable
-crates.
+The portable domain layer defines interface identity and metadata, discovery
+sessions, observations, evidence classes, DHCPv4 offer results, snapshots,
+warnings, and structured errors. Its serializable models do not contain raw OS
+handles or debug-formatted implementation details.
 
-`l2linkscope` is the command-line executable. It presents results to users and
-maps command-line arguments to library calls. Formatting and process exit
-behavior belong here rather than in library crates.
+It forbids unsafe code and has no dependency on Linux APIs, raw sockets, CLI
+libraries, or an asynchronous runtime.
 
-## Dependency Direction
+### `l2linkscope-protocols`
 
-The intended dependency direction is:
+The protocol layer owns DHCP bytes. It constructs a DHCPv4 Discover and parses
+untrusted replies into validated protocol values. Parsing is deterministic,
+bounds-checked, independent of packet acquisition, and directly usable by unit
+tests or a future fuzz target. After validation,
+`ParsedDhcpV4Offer::into_normalized()` performs the explicit conversion into
+the portable `l2linkscope_core::DhcpV4Offer` domain model.
+
+It never opens a socket, transmits a frame, or formats CLI output. It forbids
+unsafe code.
+
+### `l2linkscope-linux`
+
+The platform layer inventories Linux interfaces and performs the explicitly
+requested DHCP probe. It resolves exactly one interface, constructs the probe
+through `l2linkscope-protocols`, transmits and receives through the selected
+interface, matches replies, enforces the collection deadline, deduplicates
+identical offers, and normalizes the result through `l2linkscope-core`.
+
+Version 0.1.0 obtains configured addresses through the kernel `getifaddrs`
+interface and reads link index, type, flags, operational state, carrier, MAC,
+and MTU from `/sys/class/net`. This small synchronous implementation avoids an
+asynchronous netlink runtime while preserving the same normalized public model;
+a later netlink backend can replace it without changing CLI presentation.
+
+Linux privilege and socket details remain behind its small safe public
+interface. The current implementation forbids unsafe code. Any future direct
+syscall use must stay confined to an internal module with documented invariants
+and explicit review.
+
+### `l2linkscope`
+
+The executable parses arguments, invokes libraries, renders human-readable or
+JSON output, sends diagnostics to standard error, and maps failures to process
+exit codes. It contains no DHCP wire-format logic or Linux socket operations.
+
+## Dependency direction
 
 ```text
 l2linkscope-core
 
 l2linkscope-protocols
-    -> l2linkscope-core when normalized models are needed
+    -> l2linkscope-core
 
 l2linkscope-linux
     -> l2linkscope-core
-    -> l2linkscope-protocols when packet parsers are needed
+    -> l2linkscope-protocols
 
-l2linkscope CLI
+l2linkscope
     -> l2linkscope-core
     -> l2linkscope-protocols
     -> l2linkscope-linux
 ```
 
-The initial crates do not add dependency edges merely to demonstrate this graph.
-Edges should be introduced when real code needs them. Cyclic dependencies are
-not allowed.
+Dependencies flow toward portable policy and protocol layers. Cycles are not
+allowed. The CLI may depend on every library package, but no library depends on
+the CLI.
 
-## Separation Of Concerns
+## Key design decisions
 
-Acquisition is responsible for obtaining bytes or platform facts from an
-operating system.
+### Parsing and acquisition are separate
 
-Parsing is responsible for interpreting protocol bytes and rejecting malformed
-input safely.
+Network bytes are hostile. Keeping parsing pure makes malformed-input behavior
+unit-testable and fuzzable without Linux, privileges, timing, or live network
+state. The tradeoff is an explicit conversion step between protocol values and
+domain observations; that step is preferable to coupling parsers to sockets.
 
-Models are responsible for normalized, reusable representations of observations
-and evidence.
+### Models and presentation are separate
 
-Presentation is responsible for human-readable and machine-readable command
-output.
+Library consumers need structured results without terminal wording. The CLI
+therefore owns tables, prose, JSON envelopes, and exit codes. The tradeoff is
+that additions to a public result may require coordinated presentation work.
 
-These responsibilities should remain separated so future agents can work on
-small, reviewable changes without forcing unrelated crates to change.
+### The first active workflow stops at Offer
 
-## Linux And Portable Code
+The DHCP transport implements only Discover transmission and Offer collection.
+It cannot accept a lease because the workflow never constructs or transmits a
+Request. This narrow state machine is easier to audit and test. Lease
+negotiation belongs outside the product boundary, not behind an option.
 
-Portable models and protocol parsers should remain independent of Linux. Linux
-code may use Linux-only APIs and privileges, but those details should be
-isolated in `l2linkscope-linux`.
+### Socket privileges are isolated
 
-Future unsafe Linux syscall code must be isolated in small modules, reviewed
-explicitly, wrapped in safe interfaces, justified with safety comments, and kept
-out of `l2linkscope-core` and `l2linkscope-protocols`.
+Interface inventory should work without elevated privileges. Only the active
+transport crosses the Linux socket privilege boundary. Binding UDP port 68 and
+binding the socket to one device are kept in that layer so deployments can use
+`CAP_NET_BIND_SERVICE` and `CAP_NET_RAW` rather than broad root operation.
 
-## External Consumers
+## Interface identity
 
-The CLI and JoshOS integrations are sibling consumers of the public crates.
-L2LinkScope is not part of JoshOS and must not depend on JoshOS filesystem
-paths, services, Worlds, IPC conventions, build pipelines, initramfs or ISO
-construction, or JoshOS-specific terminology.
+An interface name can be renamed and is not a stable identity. Version 0.1.0
+uses the kernel interface index plus available hardware metadata as a runtime
+identity and carries the current name as metadata. This is sufficient for a
+bounded session but does not guarantee persistent identity across reboots,
+network-namespace recreation, or hardware replacement.
 
-Future JoshOS integration should live outside this repository or in a clearly
-separate adapter that consumes the public crates without coupling the crates to
-JoshOS.
+## External consumers
+
+The CLI and any future adapters are sibling consumers of the public crates.
+L2LinkScope remains standalone and contains no JoshOS filesystem paths,
+Services, Worlds, IPC conventions, build hooks, or release terminology. A
+future NetworkDiscoveryService integration must be implemented as an external
+adapter without changing these boundaries.

@@ -29,3 +29,20 @@ jobs:
 
       - name: Run workspace checks
         run: scripts/check.sh
+
+      - name: Verify publication remains opt-in
+        shell: bash
+        run: |
+          for manifest in crates/*/Cargo.toml; do
+            if ! grep -q '^publish = false$' "$manifest"; then
+              echo "::error file=$manifest::package publication must remain explicitly disabled"
+              exit 1
+            fi
+          done
+
+      - name: Validate package metadata and contents
+        shell: bash
+        run: |
+          for manifest in crates/*/Cargo.toml; do
+            cargo package --locked --list --manifest-path "$manifest" >/dev/null
+          done

@@ -1,34 +1,26 @@
 # Protocol Scope
 
-This document lists anticipated protocol and platform areas. The items below are
-planned or possible future work, not implemented functionality.
+## Implemented in 0.1.0
 
-## Initial Areas
+The only wire protocol implemented by the first release is the bounded DHCPv4
+Discover/Offer workflow described in [DHCPv4](DhcpV4.md). Protocol construction
+and parsing live in `l2linkscope-protocols`; Linux transmission and reception
+live in `l2linkscope-linux`.
 
-* interface inventory
-* Ethernet
-* IEEE 802.1Q VLAN metadata
-* ARP
-* IPv4 and IPv6
-* ICMPv6 Neighbor Discovery
-* Router Advertisements
-* DHCPv4
-* DHCPv6
-* LLDP
+Linux interface inventory is also implemented, but it is platform discovery
+rather than a wire-protocol parser.
 
-## Potential Later Additions
+## Explicitly not implemented
 
-* mDNS and DNS-SD
-* SSDP
-* CDP
-* EAPOL
-* STP
-* LACP
-* VRRP and similar advertisements
-* ethtool diagnostics
-* Wi-Fi discovery through Linux `nl80211`
+Version 0.1.0 does not expose placeholder commands or claim support for:
 
-## Current Status
+* passive ARP monitoring
+* VLAN observation
+* IPv6 Router Advertisement or DHCPv6
+* LLDP, mDNS, DNS-SD, SSDP, CDP, EAPOL, STP, or LACP
+* Wi-Fi discovery or topology mapping
+* subnet scanning, arbitrary capture, or promiscuous mode
+* DHCP lease acceptance or any automatic configuration
 
-The repository scaffold does not implement any protocol parser, encoder,
-packet-capture path, or active probe.
+These may be considered incrementally after 0.1.0. Their possible future use
+does not justify speculative public APIs in this release.
