@@ -76,12 +76,6 @@ impl From<ProcessExit> for ExitCode {
 }
 
 #[derive(Serialize)]
-struct InterfacesOutput<'a> {
-    schema_version: &'static str,
-    interfaces: &'a [Interface],
-}
-
-#[derive(Serialize)]
 struct ErrorOutput {
     schema_version: &'static str,
     error: DiscoveryError,
@@ -118,19 +112,15 @@ fn execute(cli: Cli) -> ProcessExit {
 }
 
 fn run_interfaces(json: bool) -> ProcessExit {
-    match l2linkscope_linux::interfaces() {
-        Ok(interfaces) => {
+    match l2linkscope_linux::interface_snapshot() {
+        Ok(snapshot) => {
             if json {
-                let output = InterfacesOutput {
-                    schema_version: JSON_SCHEMA_VERSION,
-                    interfaces: &interfaces,
-                };
-                if let Err(error) = write_json_stdout(&output) {
+                if let Err(error) = write_json_stdout(&snapshot) {
                     eprintln!("error: {error}");
                     return ProcessExit::Internal;
                 }
             } else {
-                print_interfaces(&interfaces);
+                print_interfaces(&snapshot.interfaces);
             }
             ProcessExit::Success
         }
@@ -139,9 +129,10 @@ fn run_interfaces(json: bool) -> ProcessExit {
 }
 
 fn run_dhcp4(interface: &str, timeout: Duration, json: bool, verbose: bool) -> ProcessExit {
+    let displayed_interface = display_terminal_safe(interface);
     if verbose {
         eprintln!(
-            "sending one DHCPv4 Discover on {interface}; collecting for {} ms",
+            "sending one DHCPv4 Discover on {displayed_interface}; collecting for {} ms",
             timeout.as_millis()
         );
     }
@@ -185,13 +176,13 @@ fn report_error(error: LinuxError, json: bool) -> ProcessExit {
         match serde_json::to_string_pretty(&output) {
             Ok(value) => eprintln!("{value}"),
             Err(json_error) => {
-                eprintln!("error: {error}");
+                eprintln!("error: {}", display_terminal_safe(&error.to_string()));
                 eprintln!("error: could not serialize structured error: {json_error}");
                 return ProcessExit::Internal;
             }
         }
     } else {
-        eprintln!("error: {error}");
+        eprintln!("error: {}", display_terminal_safe(&error.to_string()));
     }
     exit
 }
@@ -213,7 +204,7 @@ fn print_interfaces(interfaces: &[Interface]) {
         if position > 0 {
             println!();
         }
-        println!("{}", display_untrusted(&interface.name));
+        println!("{}", display_terminal_safe(&interface.name));
         println!("  Index:       {}", interface.id.index);
         println!("  Link:        {}", display_link(interface));
         println!(
@@ -249,7 +240,7 @@ fn print_interfaces(interfaces: &[Interface]) {
                     .unwrap_or("unspecified reason")
             )
         };
-        println!("  DHCP probe:  {probe}");
+        println!("  DHCP probe:  {}", display_terminal_safe(&probe));
     }
 }
 
@@ -263,16 +254,17 @@ fn display_link(interface: &Interface) -> &'static str {
 }
 
 fn print_probe(interface: &str, timeout: Duration, snapshot: &l2linkscope_core::DiscoverySnapshot) {
+    let displayed_interface = display_terminal_safe(interface);
     if snapshot.observations.is_empty() {
         println!(
-            "No DHCPv4 Offer was observed on {interface} during the {} probe.",
+            "No DHCPv4 Offer was observed on {displayed_interface} during the {} probe.",
             display_probe_duration(timeout)
         );
         println!("No network configuration was changed.");
         return;
     }
 
-    println!("DHCPv4 offers observed on {interface}");
+    println!("DHCPv4 offers observed on {displayed_interface}");
     for (index, observation) in snapshot.observations.iter().enumerate() {
         let ObservationKind::DhcpV4Offer(offer) = observation.kind();
         println!();
@@ -300,7 +292,7 @@ fn print_probe(interface: &str, timeout: Duration, snapshot: &l2linkscope_core::
             display_ipv4_list(&offer.dns_servers)
         );
         if let Some(domain) = &offer.domain_name {
-            println!("  Domain name:       {}", display_untrusted(domain));
+            println!("  Domain name:       {}", display_terminal_safe(domain));
         }
         if !offer.domain_search.is_empty() {
             println!(
@@ -308,7 +300,7 @@ fn print_probe(interface: &str, timeout: Duration, snapshot: &l2linkscope_core::
                 offer
                     .domain_search
                     .iter()
-                    .map(|name| display_untrusted(name))
+                    .map(|name| display_terminal_safe(name))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
@@ -326,7 +318,7 @@ fn print_probe(interface: &str, timeout: Duration, snapshot: &l2linkscope_core::
     }
     for warning in &snapshot.warnings {
         println!();
-        println!("Warning: {}", warning.message);
+        println!("Warning: {}", display_terminal_safe(&warning.message));
     }
     println!();
     println!("This configuration was advertised but not accepted or applied.");
@@ -352,8 +344,32 @@ fn derived_network(address: Ipv4Addr, mask: Ipv4Addr) -> Option<(Ipv4Addr, u32)>
     Some((Ipv4Addr::from(u32::from(address) & bits), bits.count_ones()))
 }
 
-fn display_untrusted(value: &str) -> String {
-    value.chars().flat_map(char::escape_default).collect()
+fn display_terminal_safe(value: &str) -> String {
+    let mut displayed = String::with_capacity(value.len());
+    for character in value.chars() {
+        if character.is_control() || is_invisible_format(character) {
+            displayed.extend(character.escape_default());
+        } else {
+            displayed.push(character);
+        }
+    }
+    displayed
+}
+
+const fn is_invisible_format(character: char) -> bool {
+    matches!(
+        character,
+        '\u{061c}'
+            | '\u{200b}'
+            | '\u{200c}'
+            | '\u{200d}'
+            | '\u{200e}'
+            | '\u{200f}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{2069}'
+            | '\u{feff}'
+    )
 }
 
 fn display_probe_duration(duration: Duration) -> String {
@@ -403,7 +419,7 @@ mod tests {
     use l2linkscope_core::DiscoveryErrorCode;
 
     use super::{
-        Cli, Command, ProbeCommand, ProcessExit, derived_network, display_untrusted,
+        Cli, Command, ProbeCommand, ProcessExit, derived_network, display_terminal_safe,
         exit_for_error, parse_timeout,
     };
 
@@ -463,7 +479,11 @@ mod tests {
 
     #[test]
     fn escapes_untrusted_terminal_control_characters() {
-        assert_eq!(display_untrusted("safe\u{1b}[31m\n"), "safe\\u{1b}[31m\\n");
+        assert_eq!(
+            display_terminal_safe("safe\u{1b}[31m\n"),
+            "safe\\u{1b}[31m\\n"
+        );
+        assert_eq!(display_terminal_safe("veth-é-\u{202e}"), "veth-é-\\u{202e}");
     }
 
     #[test]

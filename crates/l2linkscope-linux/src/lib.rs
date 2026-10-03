@@ -17,7 +17,10 @@
 use std::fmt;
 use std::time::Duration;
 
-use l2linkscope_core::{DiscoveryError, DiscoveryErrorCode, DiscoverySnapshot, Interface};
+use l2linkscope_core::{
+    DiscoveryError, DiscoveryErrorCode, DiscoveryMethod, DiscoverySession, DiscoverySessionId,
+    DiscoverySnapshot, Interface, ObservationTimestamp,
+};
 
 /// Default bounded DHCP Offer collection window.
 pub const DEFAULT_DHCP_V4_TIMEOUT: Duration = Duration::from_secs(5);
@@ -148,6 +151,46 @@ impl std::error::Error for LinuxError {}
 /// Returns a structured error if kernel interface metadata cannot be read.
 pub fn interfaces() -> Result<Vec<Interface>, LinuxError> {
     platform::interfaces()
+}
+
+/// Collects normalized interface metadata with versioned session timestamps.
+///
+/// This is the preferred entry point for consumers which retain inventory or
+/// need to distinguish a current observation from stale serialized data. The
+/// session start and completion timestamps bound the inventory operation.
+///
+/// # Errors
+///
+/// Returns a structured error if timestamps or kernel interface metadata cannot
+/// be collected.
+pub fn interface_snapshot() -> Result<DiscoverySnapshot, LinuxError> {
+    let started_at =
+        ObservationTimestamp::now().map_err(|error| LinuxError::Internal(error.to_string()))?;
+    let interfaces = interfaces()?;
+    let completed_at =
+        ObservationTimestamp::now().map_err(|error| LinuxError::Internal(error.to_string()))?;
+    Ok(build_interface_snapshot(
+        interfaces,
+        started_at,
+        completed_at,
+    ))
+}
+
+fn build_interface_snapshot(
+    interfaces: Vec<Interface>,
+    started_at: ObservationTimestamp,
+    completed_at: ObservationTimestamp,
+) -> DiscoverySnapshot {
+    let session = DiscoverySession {
+        id: DiscoverySessionId::new(),
+        interface_id: None,
+        method: DiscoveryMethod::InterfaceInventory,
+        started_at,
+        completed_at: Some(completed_at),
+    };
+    let mut snapshot = DiscoverySnapshot::new(session);
+    snapshot.interfaces = interfaces;
+    snapshot
 }
 
 /// Sends one DHCP Discover on `interface_name` and collects matching Offers.
@@ -685,9 +728,9 @@ mod platform {
 mod tests {
     use std::time::Duration;
 
-    use l2linkscope_core::DiscoveryErrorCode;
+    use l2linkscope_core::{DiscoveryErrorCode, DiscoveryMethod, ObservationTimestamp};
 
-    use super::{DhcpV4ProbeOptions, LinuxError};
+    use super::{DhcpV4ProbeOptions, LinuxError, build_interface_snapshot};
 
     #[test]
     fn timeout_bounds_are_enforced() {
@@ -707,5 +750,18 @@ mod tests {
             LinuxError::MalformedResponses(1).code(),
             DiscoveryErrorCode::MalformedResponses
         );
+    }
+
+    #[test]
+    fn interface_snapshot_preserves_collection_interval() {
+        let started_at = ObservationTimestamp::from_unix_milliseconds(1_700_000_000_000);
+        let completed_at = ObservationTimestamp::from_unix_milliseconds(1_700_000_000_025);
+        let snapshot = build_interface_snapshot(Vec::new(), started_at, completed_at);
+
+        assert_eq!(snapshot.session.method, DiscoveryMethod::InterfaceInventory);
+        assert_eq!(snapshot.session.started_at, started_at);
+        assert_eq!(snapshot.session.completed_at, Some(completed_at));
+        assert!(snapshot.interfaces.is_empty());
+        assert!(snapshot.observations.is_empty());
     }
 }
