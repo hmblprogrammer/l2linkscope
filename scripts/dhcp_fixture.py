@@ -91,13 +91,55 @@ def malformed_offer(discover: bytes) -> bytes:
     return payload[:240] + bytes((53, 1, 2, 1, 250, 255))
 
 
+def with_wrong_transaction_id(payload: bytes) -> bytes:
+    """Return *payload* with a deterministic unrelated transaction ID."""
+    wrong = bytearray(payload)
+    wrong[4:8] = struct.pack("!I", struct.unpack("!I", wrong[4:8])[0] ^ 1)
+    return bytes(wrong)
+
+
+def with_wrong_client_hardware_address(payload: bytes) -> bytes:
+    """Return *payload* with a deterministic unrelated client address."""
+    wrong = bytearray(payload)
+    wrong[28] ^= 1
+    return bytes(wrong)
+
+
+def response_socket(interface: str, source_port: int) -> socket.socket:
+    """Create a fixture response socket bound to *interface* and *source_port*."""
+    response = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    response.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    response.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    response.setsockopt(
+        socket.SOL_SOCKET,
+        SO_BINDTODEVICE,
+        interface.encode("ascii") + b"\x00",
+    )
+    response.bind(("0.0.0.0", source_port))
+    return response
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--interface", required=True)
     parser.add_argument(
         "--mode",
         required=True,
-        choices=("one", "two", "none", "malformed", "wrong-xid", "wrong-chaddr", "duplicate"),
+        choices=(
+            "one",
+            "two",
+            "none",
+            "malformed",
+            "short-garbage",
+            "wrong-port",
+            "malformed-wrong-xid",
+            "malformed-wrong-chaddr",
+            "unrelated-garbage",
+            "valid-after-unrelated",
+            "wrong-xid",
+            "wrong-chaddr",
+            "duplicate",
+        ),
     )
     parser.add_argument("--log", required=True, type=Path)
     parser.add_argument("--ready", required=True, type=Path)
@@ -140,32 +182,64 @@ def main() -> int:
         responded = True
         quiet_deadline = time.monotonic() + 2.0
 
-        responses: list[bytes]
+        responses: list[tuple[bytes, int]]
         if args.mode == "one":
-            responses = [offer(payload, "192.0.2.117", "192.0.2.1")]
+            responses = [(offer(payload, "192.0.2.117", "192.0.2.1"), 67)]
         elif args.mode == "two":
             responses = [
-                offer(payload, "192.0.2.117", "192.0.2.1"),
-                offer(payload, "198.51.100.23", "198.51.100.1"),
+                (offer(payload, "192.0.2.117", "192.0.2.1"), 67),
+                (offer(payload, "198.51.100.23", "198.51.100.1"), 67),
             ]
         elif args.mode == "duplicate":
             repeated = offer(payload, "192.0.2.117", "192.0.2.1")
-            responses = [repeated, repeated]
+            responses = [(repeated, 67), (repeated, 67)]
         elif args.mode == "malformed":
-            responses = [malformed_offer(payload)]
+            responses = [(malformed_offer(payload), 67)]
+        elif args.mode == "short-garbage":
+            responses = [(b"unattributable", 67)]
+        elif args.mode == "wrong-port":
+            responses = [(offer(payload, "192.0.2.117", "192.0.2.1"), 1067)]
+        elif args.mode == "malformed-wrong-xid":
+            responses = [(with_wrong_transaction_id(malformed_offer(payload)), 67)]
+        elif args.mode == "malformed-wrong-chaddr":
+            responses = [(with_wrong_client_hardware_address(malformed_offer(payload)), 67)]
+        elif args.mode == "unrelated-garbage":
+            malformed = malformed_offer(payload)
+            responses = [
+                (b"short", 67),
+                (with_wrong_transaction_id(malformed), 67),
+                (with_wrong_client_hardware_address(malformed), 67),
+            ]
+        elif args.mode == "valid-after-unrelated":
+            malformed = malformed_offer(payload)
+            responses = [
+                (b"short", 67),
+                (with_wrong_transaction_id(malformed), 67),
+                (with_wrong_client_hardware_address(malformed), 67),
+                (offer(payload, "192.0.2.117", "192.0.2.1"), 67),
+            ]
         elif args.mode == "wrong-xid":
-            wrong = bytearray(offer(payload, "192.0.2.117", "192.0.2.1"))
-            wrong[4:8] = struct.pack("!I", struct.unpack("!I", wrong[4:8])[0] ^ 1)
-            responses = [bytes(wrong)]
+            responses = [
+                (with_wrong_transaction_id(offer(payload, "192.0.2.117", "192.0.2.1")), 67)
+            ]
         elif args.mode == "wrong-chaddr":
-            wrong = bytearray(offer(payload, "192.0.2.117", "192.0.2.1"))
-            wrong[28] ^= 1
-            responses = [bytes(wrong)]
+            responses = [
+                (
+                    with_wrong_client_hardware_address(
+                        offer(payload, "192.0.2.117", "192.0.2.1")
+                    ),
+                    67,
+                )
+            ]
         else:
             responses = []
 
-        for response in responses:
-            sock.sendto(response, ("255.255.255.255", 68))
+        for response, source_port in responses:
+            if source_port == 67:
+                sock.sendto(response, ("255.255.255.255", 68))
+            else:
+                with response_socket(args.interface, source_port) as alternate:
+                    alternate.sendto(response, ("255.255.255.255", 68))
             time.sleep(0.05)
 
     return 0

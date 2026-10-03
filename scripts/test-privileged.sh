@@ -164,6 +164,12 @@ run_scenario one 0 1
 run_scenario two 0 2
 run_scenario none 1 0
 run_scenario malformed 7 -
+run_scenario short-garbage 1 0
+run_scenario wrong-port 1 0
+run_scenario malformed-wrong-xid 1 0
+run_scenario malformed-wrong-chaddr 1 0
+run_scenario unrelated-garbage 1 0
+run_scenario valid-after-unrelated 0 1
 run_scenario wrong-xid 1 0
 run_scenario wrong-chaddr 1 0
 run_scenario duplicate 0 1
