@@ -61,7 +61,10 @@ ip -n "$CLIENT_NS" link set lo up
 ip -n "$SERVER_NS" link set lo up
 ip -n "$CLIENT_NS" link set "$CLIENT_IF" up
 ip -n "$SERVER_NS" link set "$SERVER_IF" up
-ip -n "$SERVER_NS" address add 192.0.2.1/24 dev "$SERVER_IF"
+
+# Keep the disposable link free of configured IPv4 addresses. The fixture's
+# observed UDP source is therefore 0.0.0.0 while option 54 advertises a server
+# identifier such as 192.0.2.1, explicitly exercising the model distinction.
 
 snapshot_state() {
   local destination="$1"
@@ -108,6 +111,8 @@ for offer in offers:
         raise SystemExit("Offer transport peer has no observed source address")
     if "server_identifier" not in details:
         raise SystemExit("Offer does not preserve the advertised server identifier separately")
+    if peer["address"] == details["server_identifier"]:
+        raise SystemExit("fixture did not exercise distinct transport and advertised identities")
 PY
 }
 
