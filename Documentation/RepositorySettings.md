@@ -11,8 +11,10 @@ A read-only GitHub inspection on 2026-10-03 found the repository public, with:
 * no branch protection rule on `main`;
 * no repository rulesets;
 * Dependabot alerts disabled;
+* Dependabot security updates disabled;
 * private vulnerability reporting disabled; and
-* secret-scanning availability not fully observable with the inspecting token.
+* secret scanning and push protection enabled, with non-provider-pattern
+  scanning and validity checks disabled.
 
 The committed Gitleaks workflow does run on pull requests, but workflow files
 are not substitutes for repository protection settings. No repository settings
@@ -54,8 +56,9 @@ Enable vulnerability alerts and Dependabot alerts. Consider Dependabot security
 updates after alerts are enabled; ordinary version-update automation can remain
 a separate maintainer decision.
 
-Enable secret scanning where available for the repository visibility and GitHub
-plan.
+Secret scanning and push protection are already enabled. A repository
+administrator should decide whether to enable non-provider-pattern scanning and
+validity checks based on the repository plan and expected credential formats.
 
 Enable private vulnerability reporting when available so parser and
 privilege-boundary issues can be coordinated before public disclosure.
