@@ -61,6 +61,7 @@ ip -n "$CLIENT_NS" link set lo up
 ip -n "$SERVER_NS" link set lo up
 ip -n "$CLIENT_NS" link set "$CLIENT_IF" up
 ip -n "$SERVER_NS" link set "$SERVER_IF" up
+ip -n "$SERVER_NS" address add 192.0.2.1/24 dev "$SERVER_IF"
 
 snapshot_state() {
   local destination="$1"
@@ -98,6 +99,15 @@ if offers is None:
     raise SystemExit("JSON output has no offers or observations array")
 if len(offers) != expected:
     raise SystemExit(f"expected {expected} offers, found {len(offers)}")
+for offer in offers:
+    details = offer.get("kind", {}).get("details", {})
+    peer = details.get("observed_transport_peer")
+    if not isinstance(peer, dict) or peer.get("port") != 67:
+        raise SystemExit("Offer does not preserve the observed UDP/67 transport peer")
+    if "address" not in peer:
+        raise SystemExit("Offer transport peer has no observed source address")
+    if "server_identifier" not in details:
+        raise SystemExit("Offer does not preserve the advertised server identifier separately")
 PY
 }
 

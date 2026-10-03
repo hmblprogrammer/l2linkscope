@@ -137,6 +137,23 @@ pub struct OfferExpectation {
     pub client_hardware_address: [u8; 6],
 }
 
+/// Association between a received datagram and an active DHCPv4 probe.
+///
+/// This classification inspects only the fixed BOOTP identity fields needed to
+/// decide whether malformed traffic is relevant to the active probe. Full DHCP
+/// syntax validation remains the responsibility of [`parse_offer`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReplyAssociation {
+    /// The datagram carries the expected transaction and client identities.
+    Matching,
+    /// The datagram carries a different transaction identity.
+    UnrelatedTransaction,
+    /// The datagram carries a different client hardware identity.
+    UnrelatedClient,
+    /// Too little fixed-header data is present to establish both identities.
+    InsufficientIdentity,
+}
+
 /// One route advertised through DHCP option 121.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClasslessStaticRoute {
@@ -190,12 +207,16 @@ impl ParsedDhcpV4Offer {
     /// All configuration remains peer-advertised and untrusted; this conversion
     /// does not imply that any value was accepted or applied.
     #[must_use]
-    pub fn into_normalized(self) -> l2linkscope_core::DhcpV4Offer {
+    pub fn into_normalized(
+        self,
+        observed_transport_peer: l2linkscope_core::DhcpV4TransportPeer,
+    ) -> l2linkscope_core::DhcpV4Offer {
         l2linkscope_core::DhcpV4Offer {
             transaction_id: self.transaction_id,
             client_hardware_address: l2linkscope_core::MacAddress::new(
                 self.client_hardware_address,
             ),
+            observed_transport_peer,
             offered_address: self.offered_address,
             server_identifier: self.server_identifier,
             subnet_mask: self.subnet_mask,
@@ -220,6 +241,32 @@ impl ParsedDhcpV4Offer {
                 .collect(),
         }
     }
+}
+
+/// Determines whether fixed BOOTP identity fields associate `packet` with a probe.
+///
+/// A matching result does not imply that the packet is syntactically valid,
+/// trustworthy, or a DHCP Offer. It means only that enough bytes survived to
+/// match both the transaction ID and client hardware address. Callers can then
+/// count a later parse failure as a malformed response associated with the
+/// active probe.
+#[must_use]
+pub fn associate_reply(packet: &[u8], expectation: OfferExpectation) -> ReplyAssociation {
+    let Some(transaction_bytes) = packet.get(4..8) else {
+        return ReplyAssociation::InsufficientIdentity;
+    };
+    if read_u32(transaction_bytes) != expectation.transaction_id {
+        return ReplyAssociation::UnrelatedTransaction;
+    }
+
+    let Some(client_hardware_address) = packet.get(28..34) else {
+        return ReplyAssociation::InsufficientIdentity;
+    };
+    if client_hardware_address != expectation.client_hardware_address {
+        return ReplyAssociation::UnrelatedClient;
+    }
+
+    ReplyAssociation::Matching
 }
 
 /// Structured DHCPv4 parsing failure.
@@ -919,5 +966,45 @@ mod tests {
             ),
             Err(ParseError::PacketTooLarge { .. })
         ));
+    }
+
+    #[test]
+    fn association_requires_both_probe_identities() {
+        let expected = OfferExpectation {
+            transaction_id: 0x1234_5678,
+            client_hardware_address: [0, 1, 2, 3, 4, 5],
+        };
+
+        assert_eq!(
+            associate_reply(&[0; 7], expected),
+            ReplyAssociation::InsufficientIdentity
+        );
+
+        let mut partial = vec![0_u8; 20];
+        partial[4..8].copy_from_slice(&expected.transaction_id.to_be_bytes());
+        assert_eq!(
+            associate_reply(&partial, expected),
+            ReplyAssociation::InsufficientIdentity
+        );
+
+        partial[4..8].copy_from_slice(&(expected.transaction_id ^ 1).to_be_bytes());
+        assert_eq!(
+            associate_reply(&partial, expected),
+            ReplyAssociation::UnrelatedTransaction
+        );
+
+        let mut envelope = vec![0_u8; 34];
+        envelope[4..8].copy_from_slice(&expected.transaction_id.to_be_bytes());
+        envelope[28..34].copy_from_slice(&[5, 4, 3, 2, 1, 0]);
+        assert_eq!(
+            associate_reply(&envelope, expected),
+            ReplyAssociation::UnrelatedClient
+        );
+
+        envelope[28..34].copy_from_slice(&expected.client_hardware_address);
+        assert_eq!(
+            associate_reply(&envelope, expected),
+            ReplyAssociation::Matching
+        );
     }
 }

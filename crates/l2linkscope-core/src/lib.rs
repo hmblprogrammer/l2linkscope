@@ -54,7 +54,7 @@ mod interface;
 mod observation;
 mod snapshot;
 
-pub use dhcp::{ClasslessStaticRoute, DhcpV4Offer, Ipv4Network};
+pub use dhcp::{ClasslessStaticRoute, DhcpV4Offer, DhcpV4TransportPeer, Ipv4Network};
 pub use diagnostics::{DiscoveryError, DiscoveryErrorCode, DiscoveryWarning, DiscoveryWarningCode};
 pub use identifiers::{DiscoverySessionId, ObservationId, ObservationTimestamp, TimestampError};
 pub use interface::{

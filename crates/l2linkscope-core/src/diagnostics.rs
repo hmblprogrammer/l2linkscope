@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DiscoveryWarningCode {
-    /// More than one DHCP server returned a distinct offer.
+    /// More than one transport peer or advertised server identity was observed.
     MultipleDhcpServers,
     /// One or more hostile or malformed responses were ignored.
     MalformedResponse,

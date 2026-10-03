@@ -181,13 +181,14 @@ mod platform {
 
     use if_addrs::IfAddr;
     use l2linkscope_core::{
-        AdministrativeState, CarrierState, DiscoveryMethod, DiscoverySession, DiscoverySessionId,
-        DiscoverySnapshot, DiscoveryWarning, DiscoveryWarningCode, Interface, InterfaceAddress,
-        InterfaceId, MacAddress, Observation, ObservationId, ObservationTimestamp,
-        OperationalState, ProbeSupport,
+        AdministrativeState, CarrierState, DhcpV4TransportPeer, DiscoveryMethod, DiscoverySession,
+        DiscoverySessionId, DiscoverySnapshot, DiscoveryWarning, DiscoveryWarningCode, Interface,
+        InterfaceAddress, InterfaceId, MacAddress, Observation, ObservationId,
+        ObservationTimestamp, OperationalState, ProbeSupport,
     };
     use l2linkscope_protocols::dhcpv4::{
-        DhcpDiscover, MAX_DHCP_V4_MESSAGE_SIZE, OfferExpectation, ParseError, parse_offer,
+        DhcpDiscover, MAX_DHCP_V4_MESSAGE_SIZE, OfferExpectation, ReplyAssociation,
+        associate_reply, parse_offer,
     };
     use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
@@ -327,7 +328,6 @@ mod platform {
             client_hardware_address: mac.octets(),
         };
         let mut offers = Vec::new();
-        let mut server_sources = HashSet::new();
         let mut malformed_responses = 0_usize;
         let mut reached_limit = false;
         let mut buffer = [0_u8; RECEIVE_BUFFER_SIZE];
@@ -341,28 +341,43 @@ mod platform {
                 .set_read_timeout(Some(deadline.saturating_duration_since(now)))
                 .map_err(|error| map_socket_error("set receive timeout", error))?;
             match socket.recv_from(&mut buffer) {
-                Ok((length, source)) => match parse_offer(&buffer[..length], expectation) {
-                    Ok(offer) => {
-                        if let IpAddr::V4(address) = source.ip() {
-                            server_sources.insert(address);
-                        }
-                        if !offers
-                            .iter()
-                            .any(|(existing, _observed_at)| existing == &offer)
-                        {
-                            if offers.len() == MAX_OFFERS {
-                                reached_limit = true;
-                                break;
+                Ok((length, source)) => {
+                    if source.port() != DHCP_SERVER_PORT {
+                        continue;
+                    }
+                    if associate_reply(&buffer[..length], expectation) != ReplyAssociation::Matching
+                    {
+                        continue;
+                    }
+                    let IpAddr::V4(address) = source.ip() else {
+                        continue;
+                    };
+                    let observed_transport_peer = DhcpV4TransportPeer {
+                        address,
+                        port: source.port(),
+                    };
+                    match parse_offer(&buffer[..length], expectation) {
+                        Ok(offer) => {
+                            if !offers
+                                .iter()
+                                .any(|(existing, existing_peer, _observed_at)| {
+                                    existing == &offer && existing_peer == &observed_transport_peer
+                                })
+                            {
+                                if offers.len() == MAX_OFFERS {
+                                    reached_limit = true;
+                                    break;
+                                }
+                                let observed_at = ObservationTimestamp::now()
+                                    .map_err(|error| LinuxError::Internal(error.to_string()))?;
+                                offers.push((offer, observed_transport_peer, observed_at));
                             }
-                            let observed_at = ObservationTimestamp::now()
-                                .map_err(|error| LinuxError::Internal(error.to_string()))?;
-                            offers.push((offer, observed_at));
+                        }
+                        Err(_) => {
+                            malformed_responses = malformed_responses.saturating_add(1);
                         }
                     }
-                    Err(ParseError::WrongTransactionId { .. })
-                    | Err(ParseError::WrongClientHardwareAddress { .. }) => {}
-                    Err(_) => malformed_responses = malformed_responses.saturating_add(1),
-                },
+                }
                 Err(error)
                     if matches!(
                         error.kind(),
@@ -410,13 +425,13 @@ mod platform {
         };
         let mut snapshot = DiscoverySnapshot::new(session);
         snapshot.interfaces.push(interface.clone());
-        for (offer, observed_at) in offers {
+        for (offer, observed_transport_peer, observed_at) in offers {
             snapshot.observations.push(Observation::dhcp_v4_offer(
                 ObservationId::new(),
                 session_id,
                 interface.id.clone(),
                 observed_at,
-                offer.into_normalized(),
+                offer.into_normalized(observed_transport_peer),
             ));
         }
         let advertised_servers: HashSet<_> = snapshot
@@ -426,10 +441,19 @@ mod platform {
                 l2linkscope_core::ObservationKind::DhcpV4Offer(offer) => offer.server_identifier,
             })
             .collect();
-        if advertised_servers.len() > 1 || server_sources.len() > 1 {
+        let observed_transport_peers: HashSet<_> = snapshot
+            .observations
+            .iter()
+            .map(|observation| match observation.kind() {
+                l2linkscope_core::ObservationKind::DhcpV4Offer(offer) => {
+                    offer.observed_transport_peer
+                }
+            })
+            .collect();
+        if advertised_servers.len() > 1 || observed_transport_peers.len() > 1 {
             snapshot.warnings.push(DiscoveryWarning::new(
                 DiscoveryWarningCode::MultipleDhcpServers,
-                "multiple DHCP servers advertised distinct Offers",
+                "multiple DHCP transport peers or advertised server identifiers were observed",
             ));
         }
         if malformed_responses > 0 {

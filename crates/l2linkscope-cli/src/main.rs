@@ -278,7 +278,11 @@ fn print_probe(interface: &str, timeout: Duration, snapshot: &l2linkscope_core::
         println!();
         println!("Offer {}", index + 1);
         println!(
-            "  Server:            {}",
+            "  Observed UDP peer: {}:{}",
+            offer.observed_transport_peer.address, offer.observed_transport_peer.port
+        );
+        println!(
+            "  Advertised server: {}",
             offer
                 .server_identifier
                 .map_or_else(|| "not advertised".to_owned(), |value| value.to_string())

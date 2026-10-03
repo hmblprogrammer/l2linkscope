@@ -4,6 +4,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::MacAddress;
 
+/// UDP source observed by the acquisition layer for a DHCPv4 response.
+///
+/// This is transport evidence, not proof that the peer is authorized or that it
+/// owns any DHCP Server Identifier advertised inside the packet.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct DhcpV4TransportPeer {
+    /// Source IPv4 address observed on the received UDP datagram.
+    pub address: Ipv4Addr,
+    /// Source UDP port observed on the received datagram.
+    pub port: u16,
+}
+
 /// An IPv4 network advertised in a classless static route.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Ipv4Network {
@@ -32,6 +44,11 @@ pub struct DhcpV4Offer {
     pub transaction_id: u32,
     /// Client hardware address matched to the probing interface.
     pub client_hardware_address: MacAddress,
+    /// UDP source observed for this response.
+    ///
+    /// This acquisition metadata is distinct from [`Self::server_identifier`]
+    /// and does not authenticate the peer.
+    pub observed_transport_peer: DhcpV4TransportPeer,
     /// IPv4 address proposed for the client (`yiaddr`).
     pub offered_address: Ipv4Addr,
     /// DHCP server identifier option, when advertised.

@@ -1,10 +1,10 @@
 use std::net::{IpAddr, Ipv4Addr};
 
 use l2linkscope_core::{
-    AdministrativeState, CarrierState, DhcpV4Offer, DiscoveryMethod, DiscoverySession,
-    DiscoverySessionId, DiscoverySnapshot, EvidenceClass, Interface, InterfaceAddress, InterfaceId,
-    JSON_SCHEMA_VERSION, MacAddress, Observation, ObservationId, ObservationSource,
-    ObservationTimestamp, OperationalState, ProbeSupport,
+    AdministrativeState, CarrierState, DhcpV4Offer, DhcpV4TransportPeer, DiscoveryMethod,
+    DiscoverySession, DiscoverySessionId, DiscoverySnapshot, EvidenceClass, Interface,
+    InterfaceAddress, InterfaceId, JSON_SCHEMA_VERSION, MacAddress, Observation, ObservationId,
+    ObservationSource, ObservationTimestamp, OperationalState, ProbeSupport,
 };
 use serde_json::json;
 use uuid::Uuid;
@@ -28,6 +28,10 @@ fn offer() -> DhcpV4Offer {
     DhcpV4Offer {
         transaction_id: 0x1234_5678,
         client_hardware_address: MacAddress::new([0, 17, 34, 51, 68, 85]),
+        observed_transport_peer: DhcpV4TransportPeer {
+            address: Ipv4Addr::new(192, 0, 2, 2),
+            port: 67,
+        },
         offered_address: Ipv4Addr::new(192, 0, 2, 117),
         server_identifier: Some(Ipv4Addr::new(192, 0, 2, 1)),
         subnet_mask: Some(Ipv4Addr::new(255, 255, 255, 0)),
@@ -146,6 +150,10 @@ fn snapshot_serialization_is_explicit_and_versioned() -> Result<(), serde_json::
     assert_eq!(
         value["observations"][0]["kind"]["details"]["offered_address"],
         json!("192.0.2.117")
+    );
+    assert_eq!(
+        value["observations"][0]["kind"]["details"]["observed_transport_peer"],
+        json!({ "address": "192.0.2.2", "port": 67 })
     );
     Ok(())
 }
