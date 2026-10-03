@@ -2,6 +2,9 @@ name: Security
 
 on:
   pull_request:
+  push:
+    branches:
+      - main
   workflow_dispatch:
   schedule:
     - cron: "24 11 * * 2"
@@ -48,8 +51,5 @@ jobs:
       - name: Install cargo-deny
         run: cargo +stable install cargo-deny --locked --version 0.20.2
 
-      - name: Audit Rust dependencies
-        run: cargo +stable audit --deny warnings
-
-      - name: Check dependency policy
-        run: cargo +stable deny check advisories licenses bans sources
+      - name: Audit dependencies and policy
+        run: scripts/check-security.sh
