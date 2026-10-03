@@ -3,10 +3,11 @@
 L2LinkScope is a standalone Rust project for discovering and describing the
 local Layer 2 and adjacent network environment on Linux.
 
-Version 0.1.0 establishes four reusable packages and one deliberately narrow
-end-to-end feature: it can send a DHCPv4 Discover on an explicitly selected
-interface, collect DHCP Offers for a bounded period, and report what peers
-advertised. It never advances the DHCP state machine or applies an offer.
+The proposed 0.1.0 release establishes three reusable library packages, one CLI
+package, and one deliberately narrow end-to-end feature: it can send a DHCPv4
+Discover on an explicitly selected interface, collect DHCP Offers for a bounded
+period, and report what peers advertised. It never advances the DHCP state
+machine or applies an offer.
 
 > **L2LinkScope observes and probes. It does not configure.**
 
@@ -20,6 +21,8 @@ adapter can consume the same public crates as a separate downstream project.
 * encode a DHCPv4 Discover without a hostname or other unnecessary client
   identifiers
 * collect, validate, match, and deduplicate zero or more DHCPv4 Offers
+* retain the observed UDP transport peer separately from the peer-advertised
+  DHCP Server Identifier
 * distinguish peer-advertised configuration from observations and derivations
 * render human-readable output or versioned JSON
 * stop after the bounded collection window without sending DHCP Request,
@@ -48,6 +51,32 @@ scripts/check.sh
 
 That helper runs formatting, compilation, Clippy, unit tests, documentation,
 and a release build. Parser and model tests do not need root.
+
+## Library use
+
+There is intentionally no top-level `l2linkscope` facade library in 0.1.0.
+External Rust consumers should use the narrowest applicable package:
+
+* `l2linkscope-core` for portable domain and evidence models;
+* `l2linkscope-protocols` for pure DHCP encoding and parsing; or
+* `l2linkscope-linux` as the supported high-level Linux inventory and probe API.
+
+The `l2linkscope` package is the CLI binary. All four packages remain
+`publish = false`; crates.io publication is deferred until an external project
+has exercised the APIs and they receive another review. Until then, pin a
+reviewed Git revision:
+
+```toml
+[dependencies]
+l2linkscope-linux = { git = "https://github.com/hmblprogrammer/l2linkscope.git", rev = "<reviewed-commit-sha>" }
+```
+
+After a human creates the intended tag, a consumer may instead pin it with
+`tag = "v0.1.0"`. Do not use an unreviewed moving branch as a release
+dependency. The high-level entry points are
+`l2linkscope_linux::interface_snapshot` and
+`l2linkscope_linux::probe_dhcp_v4`; `interfaces` remains available for callers
+that deliberately manage collection metadata themselves.
 
 ## Usage
 
@@ -84,7 +113,8 @@ Example probe output:
 DHCPv4 offers observed on enp3s0
 
 Offer 1
-  Server:            192.0.2.1
+  Observed UDP peer: 192.0.2.1:67
+  Advertised server: 192.0.2.1
   Proposed address:  192.0.2.117
   Derived network:   192.0.2.0/24
   Routers:           192.0.2.1
@@ -111,6 +141,10 @@ example (metadata is abbreviated here; the command emits the complete model):
         "type": "dhcp_v4_offer",
         "details": {
           "offered_address": "192.0.2.117",
+          "observed_transport_peer": {
+            "address": "192.0.2.1",
+            "port": 67
+          },
           "server_identifier": "192.0.2.1",
           "routers": ["192.0.2.1"],
           "dns_servers": ["192.0.2.10", "192.0.2.11"]
@@ -146,9 +180,11 @@ NetworkManager, systemd-networkd, dhclient, or another DHCP client may already
 be active. L2LinkScope never stops or reconfigures it. An explicit probe can
 still cause a DHCP server to emit offers and can overlap with another client's
 traffic; matching by transaction ID and client hardware address prevents that
-unrelated traffic from becoming a reported result. Socket or interface errors
-are reported against the selected interface rather than falling back to a
-different interface.
+unrelated traffic from becoming a reported result. Traffic from a non-server
+UDP port or without enough matching identity is ignored rather than counted as
+a malformed response to this probe. Socket or interface errors are reported
+against the selected interface rather than falling back to a different
+interface.
 
 See [Security and Privileges](Documentation/SecurityModel.md) for the trust and
 privilege boundaries.
@@ -163,6 +199,8 @@ For the DHCPv4 Discover workflow, L2LinkScope:
 * never accepts a lease or changes addresses, routes, DNS, VLAN membership,
   authentication, administrative state, or interface flags
 * treats every packet as hostile and rejects malformed lengths without panic
+* counts malformed traffic only after UDP/67, transaction ID, and client
+  hardware address associate it with the active probe
 * labels offered configuration `advertised_by_peer`; it is not trusted local
   state
 

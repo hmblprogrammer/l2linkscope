@@ -18,5 +18,12 @@ reports zero or more matching Offers. It does not send Request, Decline,
 Release, or Inform and never applies advertised configuration. Standard output
 contains results; diagnostics and verbose progress use standard error.
 
+Inventory JSON is a versioned snapshot with UTC session timing so retained
+output can be evaluated for freshness. Offer JSON distinguishes the observed
+UDP transport peer from the packet's optional advertised Server Identifier.
+Human-readable and diagnostic interface names escape terminal controls and
+invisible formatting characters; JSON retains the underlying string and relies
+on normal JSON escaping.
+
 See the root README and `Documentation/ExitCodes.md` for privilege, JSON, exit
 code, and safety details.

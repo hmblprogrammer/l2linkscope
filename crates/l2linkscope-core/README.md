@@ -7,9 +7,11 @@ offer, snapshot, warning, and error concepts shared by protocol parsers, Linux
 acquisition code, and presentation layers.
 
 DHCP offers are classified as peer-advertised evidence. They never indicate that
-the proposed configuration was trusted, accepted, or applied. `DiscoverySnapshot`
-includes a JSON schema version; its JSON format remains experimental throughout
-the `0.x` series.
+the proposed configuration was trusted, accepted, or applied. The normalized
+Offer model records the directly observed UDP transport peer separately from
+the peer-advertised DHCP Server Identifier option. `DiscoverySnapshot` includes
+a JSON schema version and UTC session timing; its JSON format remains
+experimental throughout the `0.x` series.
 
 This crate forbids unsafe code and must remain independent of Linux-only APIs,
 raw sockets, command-line parsing, and asynchronous runtimes unless a future

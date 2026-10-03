@@ -13,22 +13,34 @@ name. Parsed configuration remains peer-advertised data and is not trusted or
 applied by this crate.
 
 ```rust
-use l2linkscope_protocols::dhcpv4::{DhcpDiscover, OfferExpectation, parse_offer};
+use l2linkscope_protocols::dhcpv4::{
+    DhcpDiscover, OfferExpectation, ReplyAssociation, associate_reply, parse_offer,
+};
 
 let transaction_id = 0x1234_5678; // Generate securely in acquisition code.
 let mac = [0x02, 0, 0, 0, 0, 1];
 let discover_payload = DhcpDiscover::new(transaction_id, mac).encode();
 
-// A transport can send `discover_payload`, then parse each received UDP
-// payload. Parsing does not accept or apply an offered lease.
+// A transport can send `discover_payload`, associate each UDP/67 payload with
+// this probe, and fully parse only matching payloads. Parsing does not accept
+// or apply an offered lease.
 # let received_payload: &[u8] = &[];
-let result = parse_offer(
+let association = associate_reply(
     received_payload,
     OfferExpectation { transaction_id, client_hardware_address: mac },
 );
+if association == ReplyAssociation::Matching {
+    let _result = parse_offer(
+        received_payload,
+        OfferExpectation { transaction_id, client_hardware_address: mac },
+    );
+}
 ```
 
-`parse_offer` is a stateless, bounds-checked fuzzing entry point. Malformed and
-unrelated packets return structured errors rather than panicking.
+`associate_reply` and `parse_offer` are stateless, bounds-checked functions that
+accept arbitrary byte slices. Malformed and unrelated packets return structured
+results rather than panicking. They are suitable entry points for a future
+coverage-guided fuzz target, but ordinary malformed-input tests are not claimed
+as fuzz coverage.
 
 This crate forbids unsafe code.

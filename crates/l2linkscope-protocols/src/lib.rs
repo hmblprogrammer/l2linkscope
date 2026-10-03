@@ -7,7 +7,7 @@
 //!
 //! All parsers accept borrowed byte slices, keep no global state, bounds-check
 //! every read, and return structured errors. This makes [`dhcpv4::parse_offer`]
-//! suitable as a fuzzing entry point.
+//! suitable as the entry point for a future coverage-guided fuzz harness.
 //!
 //! ```
 //! use l2linkscope_protocols::dhcpv4::DhcpDiscover;

@@ -46,12 +46,21 @@ rebinding time, and classless static routes when supported by the parser. The
 default message does not send a hostname and avoids unnecessary
 client-identifying options.
 
-## Reply validation
+## Reply attribution and validation
 
-All input is hostile. The parser bounds-checks the fixed header and every
-option, tolerates padding and unknown options, caps repeated collection values,
-and returns structured errors for invalid lengths. An Offer is eligible only
-when all of these match the active probe:
+All input is hostile. Before full parsing, the Linux transport accepts response
+candidates only from UDP source port 67. It then reads the fixed BOOTP identity
+fields only when enough bytes are present. A packet can affect the probe result
+only after both its transaction ID and client hardware address match the active
+probe. Wrong identities and packets too short to establish both identities are
+unrelated traffic; they cannot turn a normal no-Offer result into a
+malformed-response failure.
+
+After association, the parser bounds-checks the fixed header and every option,
+tolerates padding and unknown options, caps repeated collection values, and
+returns structured errors for invalid lengths. A malformed associated packet is
+still counted under the existing malformed-response contract. An Offer is valid
+only when all of these match the active probe:
 
 * the BOOTP reply structure and DHCP magic cookie are valid;
 * DHCP option 53 identifies an Offer;
@@ -60,15 +69,23 @@ when all of these match the active probe:
 
 ACKs, unrelated transaction IDs, unrelated client addresses, truncated
 payloads, malformed options, and malformed classless routes are never reported
-as valid offers. Duplicate options are handled according to the parser's
+as valid Offers. Duplicate options are handled according to the parser's
 documented normalization rather than indexing beyond packet bounds.
+
+Each valid Offer records two distinct source concepts. The observed transport
+peer is the IPv4 source and UDP/67 port seen by the socket. The DHCP Server
+Identifier is option 54 claimed inside the packet. DHCPv4 does not authenticate
+either value, and a disagreement is evidence for investigation rather than a
+reason to promote one value to trusted state.
 
 ## Collection and deduplication
 
 The default probe transmits one Discover and waits for a conservative bounded
 collection interval. User-supplied timeouts are range-checked; there is no
 indefinite retry mode. Distinct Offers are retained, including competing server
-advertisements. A retransmitted otherwise-identical Offer is deduplicated.
+advertisements. A retransmitted otherwise-identical Offer from the same
+observed transport peer is deduplicated; identical advertised content from a
+different transport peer remains distinct evidence.
 
 When more than one server responds, the snapshot retains every distinct offer
 and carries a warning. Zero valid Offers is a completed observation window, not

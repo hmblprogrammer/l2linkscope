@@ -56,7 +56,13 @@ The current suite exercises:
 * one Offer from one server;
 * two distinct Offers representing competing servers;
 * no response;
-* a malformed response;
+* a malformed response carrying the active transaction and client identities;
+* a short garbage datagram that cannot establish probe identity;
+* an otherwise valid matching Offer sent from the wrong UDP source port;
+* malformed traffic with an unrelated transaction ID;
+* malformed traffic with an unrelated client hardware address;
+* a sequence of unrelated garbage followed by no Offer;
+* a valid matching Offer after unrelated malformed traffic;
 * unrelated transaction ID;
 * unrelated client hardware address;
 * retransmission of an identical Offer;
@@ -96,6 +102,40 @@ fuzz_target!(|data: &[u8]| {
 
 Continuous fuzzing is not required for 0.1.0. Curated malformed fixtures remain
 part of ordinary CI so known regressions do not depend on a fuzzing service.
+No `cargo-fuzz` target is included in 0.1.0, and the ordinary malformed-input
+tests must not be described as coverage-guided fuzzing. Adding a standard target
+seeded from the checked-in fixtures remains bounded follow-up work.
+
+## Dependency security
+
+Release readiness installs the pinned `cargo-audit` and `cargo-deny` versions
+under current stable Rust, then runs:
+
+```bash
+scripts/check-security.sh
+```
+
+The script prints both tool versions, executes `cargo audit --deny warnings`,
+and checks advisory, license, duplicate/source, and registry policy through
+`cargo deny`. It fails on a failed tool invocation. The Security workflow runs
+this job on manual and scheduled invocations and on pushes to `main`; pull
+requests retain the fast secret scan while release readiness always executes the
+dependency checks.
+
+## MUSL compatibility
+
+The release-readiness workflow installs the `x86_64-unknown-linux-musl` standard
+library and checks every workspace package and target:
+
+```bash
+cargo check --workspace --all-targets --all-features --locked \
+  --target x86_64-unknown-linux-musl
+```
+
+This covers `l2linkscope-core`, `l2linkscope-protocols`, `l2linkscope-linux`, and
+the `l2linkscope` CLI at compile/check time. The 0.1.0 workflow still produces a
+dynamically linked GNU/Linux binary artifact; a MUSL runtime artifact and
+hardware validation are separate future release decisions.
 
 ## CI separation
 

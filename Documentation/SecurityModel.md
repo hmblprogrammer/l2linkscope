@@ -15,6 +15,14 @@ or CLI dependency, which allows deterministic tests and fuzzing.
 DHCP configuration is a claim by a peer. L2LinkScope does not authenticate the
 server and must not describe an Offer as trusted or authoritative.
 
+The acquisition layer records the UDP source address and port separately from
+the DHCP Server Identifier option. The former is directly observed transport
+metadata and the latter is a peer advertisement; neither proves authorization.
+Packets from a non-server source port or without enough matching BOOTP identity
+are ignored as unrelated to the active probe. Only traffic matching UDP/67, the
+transaction ID, and the client hardware address can contribute a malformed
+matching-response result.
+
 ## Privileges
 
 `l2linkscope interfaces` is unprivileged. The active probe binds Linux UDP
@@ -39,6 +47,19 @@ getcap /usr/local/bin/l2linkscope
 File capabilities attach to a particular binary and must be reassessed after
 replacement. Do not grant `CAP_NET_ADMIN`; the probe neither needs nor uses it
 to configure the network.
+
+The current single-process implementation opens and binds the interface-scoped
+UDP/68 socket before sending the Discover. It does not currently drop root
+identity or effective capabilities after the socket is created. Packet parsing,
+model construction, and output serialization therefore run with the process's
+remaining invocation privileges. Safe Rust and a narrow API reduce risk but do
+not constitute privilege separation.
+
+The intended future reduction boundary is immediately after the selected socket
+is created and bound. A later design may drop UID/GID and capabilities in the
+same process or pass the prepared descriptor from a small privileged helper to
+an unprivileged parser. That change requires separate architecture and
+platform-specific review and is intentionally not part of 0.1.0 hardening.
 
 ## Safe Linux boundary
 

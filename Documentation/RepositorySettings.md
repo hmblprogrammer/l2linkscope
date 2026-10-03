@@ -4,6 +4,21 @@ These settings cannot be reliably committed as repository files. Maintainers
 should configure them in GitHub. Repository files document the intended policy
 but do not attempt to change repository settings.
 
+## Observed state for the 0.1.0 candidate
+
+A read-only GitHub inspection on 2026-10-03 found the repository public, with:
+
+* no branch protection rule on `main`;
+* no repository rulesets;
+* Dependabot alerts disabled;
+* private vulnerability reporting disabled; and
+* secret-scanning availability not fully observable with the inspecting token.
+
+The committed Gitleaks workflow does run on pull requests, but workflow files
+are not substitutes for repository protection settings. No repository settings
+were changed during release hardening. A repository administrator must verify
+and enable the settings below before deciding whether to release.
+
 ## Branches
 
 Recommended default branch: `main`.
@@ -18,7 +33,8 @@ Recommended required checks:
 * `Security / committed-secrets`
 * `Release Check / release-readiness` and
   `Release Check / privileged-integration` when preparing a release
-* scheduled dependency-security results before release decisions
+* a completed dependency-security run on the exact candidate before release
+  decisions
 
 Disallow force pushes to the default branch. Disallow deletion of the default
 branch.
@@ -34,7 +50,9 @@ understands the privilege boundary.
 
 ## Security
 
-Enable vulnerability alerts and Dependabot alerts.
+Enable vulnerability alerts and Dependabot alerts. Consider Dependabot security
+updates after alerts are enabled; ordinary version-update automation can remain
+a separate maintainer decision.
 
 Enable secret scanning where available for the repository visibility and GitHub
 plan.
@@ -52,8 +70,13 @@ Future publication should use crates.io Trusted Publishing or another
 short-lived credential mechanism.
 
 The security workflow installs `cargo-audit` version `0.22.2` and `cargo-deny`
-version `0.20.2` with `cargo +stable install --locked --version` and runs a
-pinned Gitleaks action against committed history.
+version `0.20.2` with `cargo +stable install --locked --version`, invokes the
+shared `scripts/check-security.sh` gate, and runs a pinned Gitleaks action
+against committed history. Dependency checks run on manual dispatch, the
+schedule, and pushes to `main`; pull requests retain the faster committed-secret
+check. Release readiness independently executes the same dependency gate, so a
+release candidate cannot pass that workflow while audit or policy checks are
+skipped.
 The project MSRV remains Rust `1.85`, while the security tools run under the
 current stable toolchain so they can understand the current RustSec advisory
 database and policy formats. This keeps scheduled checks explicit without

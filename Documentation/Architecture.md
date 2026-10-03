@@ -36,8 +36,9 @@ The protocol layer owns DHCP bytes. It constructs a DHCPv4 Discover and parses
 untrusted replies into validated protocol values. Parsing is deterministic,
 bounds-checked, independent of packet acquisition, and directly usable by unit
 tests or a future fuzz target. After validation,
-`ParsedDhcpV4Offer::into_normalized()` performs the explicit conversion into
-the portable `l2linkscope_core::DhcpV4Offer` domain model.
+`ParsedDhcpV4Offer::into_normalized(...)` performs the explicit conversion into
+the portable `l2linkscope_core::DhcpV4Offer` domain model while the acquisition
+layer supplies the separately observed UDP transport peer.
 
 It never opens a socket, transmits a frame, or formats CLI output. It forbids
 unsafe code.
@@ -66,6 +67,22 @@ and explicit review.
 The executable parses arguments, invokes libraries, renders human-readable or
 JSON output, sends diagnostics to standard error, and maps failures to process
 exit codes. It contains no DHCP wire-format logic or Linux socket operations.
+It is a binary package and intentionally does not provide a facade library in
+0.1.0.
+
+## Public library boundary
+
+`l2linkscope-linux` is the supported high-level Linux library entry point.
+Consumers needing only portable models or pure protocol processing may depend
+directly on `l2linkscope-core` or `l2linkscope-protocols`. The CLI package is not
+a library API. All packages remain non-publishable for the initial Git-tagged
+release candidate; external consumers must pin a reviewed Git revision or tag.
+
+This boundary was chosen over adding a facade crate before 0.1.0. A facade could
+make initial imports shorter, but it would create another public re-export
+surface before an external integration has tested which abstractions should be
+stable. Crates.io publication is likewise deferred until after that integration
+and another public-API review.
 
 ## Dependency direction
 

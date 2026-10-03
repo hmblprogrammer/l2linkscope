@@ -19,6 +19,8 @@ Version 0.1.0 uses schema version `0.1`.
 * addresses are canonical strings rather than OS socket structures;
 * durations are represented in explicit units rather than display prose;
 * evidence classes are explicit values such as `advertised_by_peer`;
+* terminal-specific escaping is not applied to JSON; the JSON encoder performs
+  the required string escaping while preserving the underlying value;
 * optional protocol values use `null` or an absent optional field according to
   the documented Rust model; collections use arrays;
 * warnings and errors are structured objects, never unstable debug strings;
@@ -26,10 +28,14 @@ Version 0.1.0 uses schema version `0.1`.
 
 ## Interface inventory
 
-The interface result includes the runtime identity, kernel name and index,
-hardware address when available, administrative and operational state, MTU,
-configured IPv4 and IPv6 prefixes, loopback status, and whether the interface
-appears suitable for an Ethernet DHCPv4 probe.
+The interface result uses the common discovery-snapshot envelope. Its session
+has method `interface_inventory`; `started_at` and `completed_at` bound the
+kernel inventory operation in signed Unix milliseconds. The result includes the
+runtime identity, kernel name and index, hardware address when available,
+administrative and operational state, MTU, configured IPv4 and IPv6 prefixes,
+loopback status, and whether the interface appears suitable for an Ethernet
+DHCPv4 probe. Interface inventory has no protocol observations, so its
+`observations` array is empty.
 
 The runtime identity is not guaranteed to persist across boots. Consumers that
 store results should retain both the identity and the observation timestamp.
@@ -39,9 +45,13 @@ store results should retain both the identity and the observation timestamp.
 The top-level probe result is a discovery snapshot containing session metadata,
 zero or more observations, and structured warnings. Every DHCP Offer carries
 `advertised_by_peer` evidence. Useful normalized fields include the offered
-address, server identifier, subnet mask, routers, DNS servers, domain data,
-lease/renewal/rebinding durations, interface MTU, and decoded classless routes
-when present.
+address, observed UDP transport peer, advertised server identifier, subnet
+mask, routers, DNS servers, domain data, lease/renewal/rebinding durations,
+interface MTU, and decoded classless routes when present.
+
+`observed_transport_peer` contains the source IPv4 address and UDP port observed
+by the acquisition socket. `server_identifier` is DHCP option 54 advertised in
+the packet. They are deliberately separate and neither authenticates the peer.
 
 An implementation may include observation IDs and timestamps alongside those
 fields. Consumers must not interpret offered values as installed local state.
@@ -53,6 +63,13 @@ Interface inventory, abbreviated:
 ```json
 {
   "schema_version": "0.1",
+  "session": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "interface_id": null,
+    "method": "interface_inventory",
+    "started_at": { "unix_milliseconds": 1785268800000 },
+    "completed_at": { "unix_milliseconds": 1785268800025 }
+  },
   "interfaces": [
     {
       "id": { "index": 2, "hardware_address": "00:11:22:33:44:55" },
@@ -67,7 +84,9 @@ Interface inventory, abbreviated:
       "is_loopback": false,
       "dhcp_v4_probe": { "supported": true }
     }
-  ]
+  ],
+  "observations": [],
+  "warnings": []
 }
 ```
 
@@ -86,7 +105,19 @@ Probe snapshot, abbreviated:
     "started_at": { "unix_milliseconds": 1785268800000 },
     "completed_at": { "unix_milliseconds": 1785268805000 }
   },
-  "interfaces": [],
+  "interfaces": [
+    {
+      "id": { "index": 2, "hardware_address": "00:11:22:33:44:55" },
+      "name": "enp3s0",
+      "administrative_state": "up",
+      "operational_state": "up",
+      "carrier_state": "present",
+      "mtu": 1500,
+      "addresses": [],
+      "is_loopback": false,
+      "dhcp_v4_probe": { "supported": true }
+    }
+  ],
   "observations": [
     {
       "id": "22222222-2222-4222-8222-222222222222",
@@ -103,6 +134,10 @@ Probe snapshot, abbreviated:
         "details": {
           "transaction_id": 305419896,
           "client_hardware_address": "00:11:22:33:44:55",
+          "observed_transport_peer": {
+            "address": "192.0.2.1",
+            "port": 67
+          },
           "offered_address": "192.0.2.117",
           "server_identifier": "192.0.2.1",
           "subnet_mask": "255.255.255.0",

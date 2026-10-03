@@ -35,6 +35,13 @@ classified `advertised_by_peer`. If the CLI calculates `192.0.2.0/24` from
 offered address `192.0.2.117` and subnet mask `255.255.255.0`, that network is
 derived; it is not a configured route or proof that the subnet is usable.
 
+The `observed_transport_peer` records the source IPv4 address and UDP port seen
+by the acquisition socket. That is direct transport evidence, but DHCPv4 is
+unauthenticated: it does not prove that the peer is authorized or owns the
+address. The DHCP `server_identifier` is different evidence—it is an option
+advertised inside the packet. Consumers must preserve this distinction and must
+not treat either value as a trust decision.
+
 An offer does not mean that:
 
 * L2LinkScope accepted a lease;
@@ -47,8 +54,11 @@ An offer does not mean that:
 
 No Offer during a bounded probe means only that no matching, valid Offer was
 observed during that window. It does not prove that the network has no DHCP
-server. Malformed or unrelated replies are not silently converted into facts;
-they may produce structured warnings or an exit category described in
+server. Traffic from the wrong UDP source port, with a different transaction or
+client identity, or without enough identity to associate it with the active
+probe is unrelated and cannot contaminate the result. A malformed packet that
+matches UDP/67, the transaction ID, and the client hardware address remains
+relevant and may produce a structured warning or exit category described in
 [Exit Codes](ExitCodes.md).
 
 ## Serialization
