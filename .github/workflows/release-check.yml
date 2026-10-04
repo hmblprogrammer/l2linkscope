@@ -1,0 +1,121 @@
+name: Release Check
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-readiness:
+    name: release-readiness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # actions/checkout v4.2.2
+
+      - name: Install declared Rust toolchain
+        run: rustup show
+
+      - name: Install Rust components
+        run: rustup component add rustfmt clippy
+
+      - name: Run workspace checks
+        run: scripts/check.sh
+
+      - name: Validate x86_64 MUSL compatibility
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          cargo check --workspace --all-targets --all-features --locked \
+            --target x86_64-unknown-linux-musl
+
+      - name: Install stable Rust for security tools
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Install dependency security tools
+        run: |
+          cargo +stable install cargo-audit --locked --version 0.22.2
+          cargo +stable install cargo-deny --locked --version 0.20.2
+
+      - name: Audit dependencies and policy
+        run: scripts/check-security.sh
+
+      - name: Verify 0.1.0 candidate or release metadata
+        shell: bash
+        run: |
+          test "$(target/release/l2linkscope --version)" = "l2linkscope 0.1.0"
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            test "${GITHUB_REF_NAME:-}" = "v0.1.0"
+            grep -Eq '^## \[0\.1\.0\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$' CHANGELOG.md
+          else
+            grep -q '^## \[Unreleased\]$' CHANGELOG.md
+            if grep -Eq '^## \[0\.1\.0\] - ' CHANGELOG.md; then
+              echo "::error file=CHANGELOG.md::candidate metadata must not claim a release date"
+              exit 1
+            fi
+          fi
+          for manifest in crates/*/Cargo.toml; do
+            if ! grep -q '^publish = false$' "$manifest"; then
+              echo "::error file=$manifest::crates.io publication is not approved by this workflow"
+              exit 1
+            fi
+          done
+
+      - name: Verify package contents without publishing
+        shell: bash
+        run: |
+          for manifest in crates/*/Cargo.toml; do
+            package_list="$(cargo package --locked --list --manifest-path "$manifest")"
+            grep -qx 'LICENSE' <<<"$package_list"
+          done
+
+      - name: Build checksummed Linux artifact
+        shell: bash
+        run: |
+          artifact="l2linkscope-0.1.0-x86_64-unknown-linux-gnu.tar.gz"
+          install -d dist/package
+          install -m 0755 target/release/l2linkscope dist/package/l2linkscope
+          install -m 0644 LICENSE README.md dist/package/
+          {
+            rustc --version --verbose
+            ldd --version | head -n 1
+          } > dist/package/BUILD-ENVIRONMENT.txt
+          tar -C dist/package -czf "dist/$artifact" \
+            l2linkscope LICENSE README.md BUILD-ENVIRONMENT.txt
+          (
+            cd dist
+            sha256sum "$artifact" > "$artifact.sha256"
+            sha256sum --check "$artifact.sha256"
+          )
+
+      - name: Upload candidate artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # actions/upload-artifact v4.6.2
+        with:
+          name: l2linkscope-0.1.0-x86_64-unknown-linux-gnu
+          path: |
+            dist/l2linkscope-0.1.0-x86_64-unknown-linux-gnu.tar.gz
+            dist/l2linkscope-0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+          if-no-files-found: error
+
+  privileged-integration:
+    name: privileged-integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # actions/checkout v4.2.2
+
+      - name: Install declared Rust toolchain
+        run: rustup show
+
+      - name: Build integration binary without elevated privileges
+        run: cargo build --locked -p l2linkscope
+
+      - name: Run isolated privileged suite
+        run: sudo --preserve-env=PATH scripts/test-privileged.sh

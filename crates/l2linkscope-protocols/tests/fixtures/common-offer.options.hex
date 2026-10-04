@@ -1,0 +1,25 @@
+# Message type: Offer
+35 01 02
+# Server identifier: 192.0.2.1
+36 04 c0 00 02 01
+# Subnet mask: 255.255.255.0
+01 04 ff ff ff 00
+# Routers: 192.0.2.1, 192.0.2.254
+03 08 c0 00 02 01 c0 00 02 fe
+# DNS servers: 192.0.2.10, 192.0.2.11
+06 08 c0 00 02 0a c0 00 02 0b
+# Domain name: example.test
+0f 0c 65 78 61 6d 70 6c 65 2e 74 65 73 74
+# Domain search: corp.example and test.example (second name uses compression)
+77 15 04 63 6f 72 70 07 65 78 61 6d 70 6c 65 00 04 74 65 73 74 c0 05
+# Lease, renewal, and rebinding times: 7200, 3600, 6300 seconds
+33 04 00 00 1c 20
+3a 04 00 00 0e 10
+3b 04 00 00 18 9c
+# Interface MTU: 1500
+1a 02 05 dc
+# Classless routes: default via 192.0.2.1; 192.0.2.0/24 via 192.0.2.254
+79 0d 00 c0 00 02 01 18 c0 00 02 c0 00 02 fe
+# Unknown option, padding, and end
+c8 03 aa bb cc
+00 00 ff
