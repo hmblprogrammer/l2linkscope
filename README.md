@@ -241,6 +241,12 @@ Contributors and automated coding agents must follow
 [AGENTS.md](AGENTS.md). Vulnerability reports should follow
 [SECURITY.md](SECURITY.md).
 
+## AI-assisted development
+
+This project uses AI-assisted development. Material AI contributions,
+decisions, validation, known limitations, and corrections are recorded in
+[AI_USAGE.md](AI_USAGE.md).
+
 ## License
 
 L2LinkScope is licensed under the [MIT License](LICENSE).

@@ -130,9 +130,29 @@ If this repository contains:
 
 review them before making changes.
 
-If your work materially affects AI usage within the project:
+## AI Usage Log
 
-Update AI_USAGE.md accordingly.
+`AI_USAGE.md` must exist in any repository that uses material AI-assisted
+development.
+
+An AI agent making a material code, architecture, test, security, CI/CD,
+release, or documentation change must update `AI_USAGE.md` in the same
+workstream. The update must:
+
+* summarize material actions and decisions without storing raw chain-of-thought;
+* distinguish human-directed decisions from AI-selected implementation choices
+  where that distinction is meaningful;
+* record AI-discovered defects and subsequent AI corrections;
+* identify AI service-account identities as service accounts, never as human
+  operators, maintainers, reviewers, or approvers; and
+* omit credentials, secrets, private infrastructure details inappropriate for
+  the public repository, private customer data, and sensitive raw prompt
+  content.
+
+Minor mechanical changes do not require excessive log noise and may be grouped
+with the related material work. These requirements supplement, and do not
+weaken, the attribution, prompt-preservation, commit, and human-review rules in
+this document.
 
 ---
 
